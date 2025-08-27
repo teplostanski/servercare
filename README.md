@@ -31,3 +31,32 @@ wget -O ./omz-plugins-install.sh https://raw.githubusercontent.com/teplostanski/
 ```zsh
 plugins=(git zsh-completions zsh-syntax-highlighting zsh-autosuggestions)
 ```
+## ssh_connect_monitor.sh
+Скрипт позволяет удобно мониторить SSH соединения
+
+1. Скачать скрипт
+```bash
+wget -O ./ssh_connect_monitor.sh https://raw.githubusercontent.com/teplostanski/servercare/main/ssh_connect_monitor.sh && chmod +x ./ssh_connect_monitor.sh
+```
+2. Создать список доверенных IP адресов, для этого необходимо создать файл `white_list_ip.conf` в той же директории что и скрипт
+
+Формат списка: IP_ADDRESS=NAME
+
+Пример: 
+```bash
+# white_list_ip.conf
+
+101.42.101.42=My_Office
+203.73.111.17=Home_WiFi
+```
+
+Или скачать и отредактировать [`white_list_ip.conf`](./white_list_ip.conf)
+
+```bash
+wget -O ./white_list_ip.conf https://raw.githubusercontent.com/teplostanski/servercare/main/white_list_ip.conf
+```
+
+3. Запустить
+```bash
+./ssh_connect_monitor.sh
+```
