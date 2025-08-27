@@ -103,17 +103,53 @@ show_history() {
         port=$(echo "$line" | sed -n 's/.*port \([0-9]*\) .*/\1/p')
 
         if [[ -n "$user" && -n "$ip" ]]; then
-            ip_info=$(get ip_info "$ip")
+            ip_info=$(get_ip_info "$ip")
             echo -e "$timestamp ${BOLD}$user${NC} $ip_info:$port POSTPONED"
         fi
     done
 
-    echo -e "\n${BOLD}СТАТИСТИКА ПО IP ($period):${NC}"
+    # РАЗДЕЛЕННАЯ СТАТИСТИКА
+    echo -e "\n${BOLD}=== СТАТИСТИКА ПО КАТЕГОРИЯМ ($period) ===${NC}"
+
+    # Белый список
+    echo -e "\n${GREEN}ДОВЕРЕННЫЕ IP (белый список):${NC}"
     sudo journalctl --since "$period" -u ssh -u sshd --no-pager -q | grep "from [0-9]" | \
-    grep -o "from [0-9.]*" | cut -d' ' -f2 | sort | uniq -c | sort -nr | head -20 | while read count ip; do
-        ip_info=$(get_ip_info "$ip")
-        echo -e "  $ip_info: $count событий"
+    grep -o "from [0-9.]*" | cut -d' ' -f2 | sort | uniq -c | sort -nr | while read count ip; do
+        if [[ -n "${WHITELIST_NAMES[$ip]}" ]]; then
+            echo -e "  ${GREEN}$ip (${WHITELIST_NAMES[$ip]})${NC}: $count событий"
+        fi
     done
+
+    # Частные IP
+    echo -e "\n${BLUE}ЧАСТНЫЕ IP:${NC}"
+    sudo journalctl --since "$period" -u ssh -u sshd --no-pager -q | grep "from [0-9]" | \
+    grep -o "from [0-9.]*" | cut -d' ' -f2 | sort | uniq -c | sort -nr | while read count ip; do
+        if [[ -z "${WHITELIST_NAMES[$ip]}" ]] && [[ "$ip" =~ ^10\. ]] || [[ "$ip" =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]] || [[ "$ip" =~ ^192\.168\. ]]; then
+            echo -e "  ${BLUE}$ip (Private)${NC}: $count событий"
+        fi
+    done
+
+    # Подозрительные (топ 10)
+    echo -e "\n${RED}ТОП-10 ПОДОЗРИТЕЛЬНЫХ IP:${NC}"
+    sudo journalctl --since "$period" -u ssh -u sshd --no-pager -q | grep "from [0-9]" | \
+    grep -o "from [0-9.]*" | cut -d' ' -f2 | sort | uniq -c | sort -nr | while read count ip; do
+        if [[ -z "${WHITELIST_NAMES[$ip]}" ]] && ! [[ "$ip" =~ ^10\. ]] && ! [[ "$ip" =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]] && ! [[ "$ip" =~ ^192\.168\. ]]; then
+            echo -e "  ${RED}$ip (Suspicious)${NC}: $count событий"
+        fi
+    done | head -10
+
+    # Общая статистика
+    echo -e "\n${BOLD}ОБЩАЯ СТАТИСТИКА:${NC}"
+
+    local total_events=$(sudo journalctl --since "$period" -u ssh -u sshd --no-pager -q | grep "from [0-9]" | wc -l)
+    local successful_logins=$(sudo journalctl --since "$period" -u ssh -u sshd --no-pager -q | grep "Accepted" | wc -l)
+    local failed_attempts=$(sudo journalctl --since "$period" -u ssh -u sshd --no-pager -q | grep "Failed" | wc -l)
+    local suspicious_connects=$(sudo journalctl --since "$period" -u ssh -u sshd --no-pager -q | grep "invalid format" | wc -l)
+
+    echo -e "  Всего событий: $total_events"
+    echo -e "  ${GREEN}Успешные входы: $successful_logins${NC}"
+    echo -e "  ${RED}Неудачные попытки: $failed_attempts${NC}"
+    echo -e "  ${RED}Подозрительные подключения: $suspicious_connects${NC}"
 }
 
 realtime_monitor() {
