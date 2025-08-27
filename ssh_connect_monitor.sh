@@ -9,16 +9,12 @@ BOLD='\033[1m'
 
 CONFIG_FILE="$(dirname "$0")/white_list_ip.conf"
 
-# Парсинг конфига
 declare -A WHITELIST_NAMES
 if [[ -f "$CONFIG_FILE" ]]; then
     while IFS='=' read -r ip name; do
         [[ "$ip" =~ ^#.*$ ]] || [[ -z "$ip" ]] && continue
         WHITELIST_NAMES["$ip"]="$name"
     done < "$CONFIG_FILE"
-else
-    echo -e "${RED}Конфиг файл $CONFIG_FILE не найден!${NC}"
-    exit 1
 fi
 
 get_ip_info() {
@@ -26,7 +22,6 @@ get_ip_info() {
     local color=""
     local name=""
 
-    # Проверка белого списка
     if [[ -n "${WHITELIST_NAMES[$ip]}" ]]; then
         color="${GREEN}"
         name=" (${WHITELIST_NAMES[$ip]})"
@@ -41,18 +36,9 @@ get_ip_info() {
     echo "${color}${ip}${name}${NC}"
 }
 
-show_legend() {
-    echo -e "\n${BOLD}Легенда цветов:${NC}"
-    echo -e "  ${GREEN}■${NC} Белый список (доверенные IP)"
-    echo -e "  ${BLUE}■${NC} Частные IP адреса"
-    echo -e "  ${RED}■${NC} Подозрительные/неизвестные IP"
-    echo ""
-}
-
 show_current_connections() {
     echo -e "${BOLD}=== АКТИВНЫЕ SSH СОЕДИНЕНИЯ ===${NC}"
 
-    # Активные SSH сессии
     who | grep pts | while read user tty date time ip_raw; do
         if [[ "$ip_raw" =~ ^\( ]]; then
             clean_ip=$(echo "$ip_raw" | sed 's/[()]//g')
@@ -62,22 +48,15 @@ show_current_connections() {
             echo -e "${BOLD}$user${NC} на $tty локально ($date $time)"
         fi
     done
-
-    # SSH процессы
-    echo -e "\n${BOLD}SSH процессы:${NC}"
-    ps aux | grep "sshd.*@" | grep -v grep | while read user pid cpu mem vsz rss tty stat start time cmd; do
-        session_info=$(echo "$cmd" | grep -o "@pts/[0-9]*")
-        echo -e "PID: $pid, пользователь: $user, сессия: $session_info"
-    done
-
     echo ""
 }
 
 show_history() {
-    echo -e "${BOLD}=== SSH АКТИВНОСТЬ ЗА 24 ЧАСА ===${NC}"
+    local period="$1"
+    echo -e "${BOLD}=== SSH АКТИВНОСТЬ ($period) ===${NC}"
 
     echo -e "\n${GREEN}УСПЕШНЫЕ ВХОДЫ:${NC}"
-    sudo journalctl --since "24 hours ago" | grep "sshd.*Accepted" | while read -r line; do
+    sudo journalctl --since "$period" -u ssh -u sshd --no-pager -q | grep "Accepted" | while read -r line; do
         timestamp=$(echo "$line" | awk '{print $1" "$2" "$3}')
         user=$(echo "$line" | sed -n 's/.*Accepted [^ ]* for \([^ ]*\) from.*/\1/p')
         ip=$(echo "$line" | sed -n 's/.*from \([0-9.]*\) port.*/\1/p')
@@ -85,55 +64,55 @@ show_history() {
         key_type=$(echo "$line" | grep -o "ED25519\|RSA\|ECDSA\|DSA")
         key_hash=$(echo "$line" | grep -o "SHA256:[A-Za-z0-9+/]*")
 
-        ip_info=$(get_ip_info "$ip")
-        echo -e "$timestamp ${BOLD}$user${NC} $ip_info:$port $key_type $key_hash"
+        if [[ -n "$user" && -n "$ip" ]]; then
+            ip_info=$(get_ip_info "$ip")
+            echo -e "$timestamp ${BOLD}$user${NC} $ip_info:$port $key_type $key_hash"
+        fi
     done
 
     echo -e "\n${RED}ПОДОЗРИТЕЛЬНЫЕ ПОДКЛЮЧЕНИЯ:${NC}"
-    sudo journalctl --since "24 hours ago" | grep "sshd.*banner exchange.*invalid format" | while read -r line; do
+    sudo journalctl --since "$period" -u ssh -u sshd --no-pager -q | grep "invalid format" | while read -r line; do
         timestamp=$(echo "$line" | awk '{print $1" "$2" "$3}')
         ip=$(echo "$line" | sed -n 's/.*from \([0-9.]*\) port.*/\1/p')
         port=$(echo "$line" | sed -n 's/.*port \([0-9]*\).*/\1/p')
 
-        ip_info=$(get_ip_info "$ip")
-        echo -e "$timestamp $ip_info:$port INVALID FORMAT"
+        if [[ -n "$ip" ]]; then
+            ip_info=$(get_ip_info "$ip")
+            echo -e "$timestamp $ip_info:$port INVALID FORMAT"
+        fi
     done
 
     echo -e "\n${RED}НЕУДАЧНЫЕ ПОПЫТКИ:${NC}"
-    sudo journalctl --since "24 hours ago" | grep "sshd.*Failed" | while read -r line; do
+    sudo journalctl --since "$period" -u ssh -u sshd --no-pager -q | grep "Failed" | while read -r line; do
         timestamp=$(echo "$line" | awk '{print $1" "$2" "$3}')
         user=$(echo "$line" | sed -n 's/.*Failed [^ ]* for \([^ ]*\) from.*/\1/p')
         ip=$(echo "$line" | sed -n 's/.*from \([0-9.]*\) port.*/\1/p')
         port=$(echo "$line" | sed -n 's/.*port \([0-9]*\) .*/\1/p')
 
-        ip_info=$(get_ip_info "$ip")
-        echo -e "$timestamp ${BOLD}$user${NC} $ip_info:$port FAILED"
+        if [[ -n "$user" && -n "$ip" ]]; then
+            ip_info=$(get_ip_info "$ip")
+            echo -e "$timestamp ${BOLD}$user${NC} $ip_info:$port FAILED"
+        fi
     done
 
     echo -e "\n${YELLOW}ОТЛОЖЕННЫЕ КЛЮЧИ (Postponed):${NC}"
-    sudo journalctl --since "24 hours ago" | grep "sshd.*Postponed" | while read -r line; do
+    sudo journalctl --since "$period" -u ssh -u sshd --no-pager -q | grep "Postponed" | while read -r line; do
         timestamp=$(echo "$line" | awk '{print $1" "$2" "$3}')
         user=$(echo "$line" | sed -n 's/.*Postponed [^ ]* for \([^ ]*\) from.*/\1/p')
         ip=$(echo "$line" | sed -n 's/.*from \([0-9.]*\) port.*/\1/p')
         port=$(echo "$line" | sed -n 's/.*port \([0-9]*\) .*/\1/p')
 
-        ip_info=$(get_ip_info "$ip")
-        echo -e "$timestamp ${BOLD}$user${NC} $ip_info:$port POSTPONED"
+        if [[ -n "$user" && -n "$ip" ]]; then
+            ip_info=$(get ip_info "$ip")
+            echo -e "$timestamp ${BOLD}$user${NC} $ip_info:$port POSTPONED"
+        fi
     done
 
-    echo -e "\n${BOLD}СТАТИСТИКА ПО IP:${NC}"
-    sudo journalctl --since "24 hours ago" | grep "sshd.*from [0-9]" | \
-    grep -o "from [0-9.]*" | cut -d' ' -f2 | sort | uniq -c | sort -nr | while read count ip; do
+    echo -e "\n${BOLD}СТАТИСТИКА ПО IP ($period):${NC}"
+    sudo journalctl --since "$period" -u ssh -u sshd --no-pager -q | grep "from [0-9]" | \
+    grep -o "from [0-9.]*" | cut -d' ' -f2 | sort | uniq -c | sort -nr | head -20 | while read count ip; do
         ip_info=$(get_ip_info "$ip")
         echo -e "  $ip_info: $count событий"
-    done
-
-    echo -e "\n${BOLD}УНИКАЛЬНЫЕ SSH КЛЮЧИ:${NC}"
-    sudo journalctl --since "24 hours ago" | grep "SHA256:" | \
-    grep -o "SHA256:[A-Za-z0-9+/]*" | sort | uniq | while read key; do
-        user_count=$(sudo journalctl --since "24 hours ago" | grep "$key" | \
-                    grep -o "for [a-zA-Z0-9_-]*" | cut -d' ' -f2 | sort | uniq | wc -l)
-        echo -e "  $key (используется $user_count пользователями)"
     done
 }
 
@@ -141,7 +120,7 @@ realtime_monitor() {
     echo -e "${BOLD}=== МОНИТОРИНГ В РЕАЛЬНОМ ВРЕМЕНИ ===${NC}"
     echo -e "Нажмите Ctrl+C для выхода\n"
 
-    sudo journalctl -u ssh -f --no-pager | while read -r line; do
+    sudo journalctl -u ssh -u sshd -f --no-pager | while read -r line; do
         timestamp=$(echo "$line" | awk '{print $1" "$2" "$3}')
 
         if echo "$line" | grep -q "Accepted"; then
@@ -180,22 +159,15 @@ realtime_monitor() {
     done
 }
 
-show_config() {
-    echo -e "${BOLD}=== КОНФИГУРАЦИЯ БЕЛОГО СПИСКА ===${NC}"
-    echo "Файл конфигурации: $CONFIG_FILE"
-    echo ""
-
-    if [[ ${#WHITELIST_NAMES[@]} -eq 0 ]]; then
-        echo "Белый список пуст"
-    else
-        for ip in "${!WHITELIST_NAMES[@]}"; do
-            echo -e "  ${GREEN}$ip${NC} = ${WHITELIST_NAMES[$ip]}"
-        done
-    fi
+show_legend() {
+    echo -e "\n${BOLD}Легенда цветов:${NC}"
+    echo -e "  ${GREEN}■${NC} Белый список (доверенные IP)"
+    echo -e "  ${BLUE}■${NC} Частные IP адреса"
+    echo -e "  ${RED}■${NC} Подозрительные/неизвестные IP"
     echo ""
 }
 
-case "${1:-history}" in
+case "${1:-today}" in
     "current"|"now")
         show_current_connections
         show_legend
@@ -203,19 +175,33 @@ case "${1:-history}" in
     "realtime"|"live"|"monitor")
         realtime_monitor
         ;;
-    "config"|"conf")
-        show_config
-        ;;
-    "history"|"")
+    "1h"|"hour")
         show_current_connections
-        show_history
+        show_history "1 hour ago"
+        show_legend
+        ;;
+    "today")
+        show_current_connections
+        show_history "today"
+        show_legend
+        ;;
+    "24h")
+        show_current_connections
+        show_history "24 hours ago"
+        show_legend
+        ;;
+    "week")
+        show_current_connections
+        show_history "1 week ago"
         show_legend
         ;;
     *)
-        echo "Использование: $0 [current|realtime|history|config]"
-        echo "  current  - показать активные соединения"
+        echo "Использование: $0 [1h|today|24h|week|current|realtime]"
+        echo "  1h       - за последний час"
+        echo "  today    - за сегодня (по умолчанию)"
+        echo "  24h      - за последние 24 часа"
+        echo "  week     - за неделю"
+        echo "  current  - только активные соединения"
         echo "  realtime - мониторинг в реальном времени"
-        echo "  history  - показать историю (по умолчанию)"
-        echo "  config   - показать конфигурацию белого списка"
         ;;
 esac
