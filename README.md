@@ -60,3 +60,14 @@ wget -O ./white_list_ip.conf https://raw.githubusercontent.com/teplostanski/serv
 ```bash
 ./ssh_connect_monitor.sh
 ```
+
+**Использование**
+```bash
+./ssh_connect_monitor.sh [1h|today|24h|week|current|realtime]
+  1h       - за последний час
+  today    - за сегодня (по умолчанию)
+  24h      - за последние 24 часа
+  week     - за неделю
+  current  - только активные соединения
+  realtime - мониторинг в реальном времени
+```
