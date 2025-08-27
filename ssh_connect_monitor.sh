@@ -70,7 +70,8 @@ show_history() {
         fi
     done
 
-    echo -e "\n${RED}ПОДОЗРИТЕЛЬНЫЕ ПОДКЛЮЧЕНИЯ:${NC}"
+    echo -e "\n${RED}АТАКИ С НЕПРАВИЛЬНЫМ ПРОТОКОЛОМ:${NC}"
+    echo -e "${YELLOW}(Попытки подключения с некорректным SSH handshake - обычно боты/сканеры)${NC}"
     sudo journalctl --since "$period" -u ssh -u sshd --no-pager -q | grep "invalid format" | while read -r line; do
         timestamp=$(echo "$line" | awk '{print $1" "$2" "$3}')
         ip=$(echo "$line" | sed -n 's/.*from \([0-9.]*\) port.*/\1/p')
@@ -130,7 +131,7 @@ show_history() {
     done
 
     # Подозрительные (топ 10)
-    echo -e "\n${RED}ТОП-10 ПОДОЗРИТЕЛЬНЫХ IP:${NC}"
+    echo -e "\n${RED}ТОП-10 АТАКУЮЩИХ IP (общая активность):${NC}"
     sudo journalctl --since "$period" -u ssh -u sshd --no-pager -q | grep "from [0-9]" | \
     grep -o "from [0-9.]*" | cut -d' ' -f2 | sort | uniq -c | sort -nr | while read count ip; do
         if [[ -z "${WHITELIST_NAMES[$ip]}" ]] && ! [[ "$ip" =~ ^10\. ]] && ! [[ "$ip" =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]] && ! [[ "$ip" =~ ^192\.168\. ]]; then
@@ -149,7 +150,7 @@ show_history() {
     echo -e "  Всего событий: $total_events"
     echo -e "  ${GREEN}Успешные входы: $successful_logins${NC}"
     echo -e "  ${RED}Неудачные попытки: $failed_attempts${NC}"
-    echo -e "  ${RED}Подозрительные подключения: $suspicious_connects${NC}"
+    echo -e "  ${RED}Атаки с неправильным протоколом: $suspicious_connects${NC}"
 }
 
 realtime_monitor() {
@@ -182,7 +183,7 @@ realtime_monitor() {
             port=$(echo "$line" | sed -n 's/.*port \([0-9]*\).*/\1/p')
 
             ip_info=$(get_ip_info "$ip")
-            echo -e "$timestamp ${RED}[SUSPICIOUS]${NC} $ip_info:$port invalid format"
+            echo -e "$timestamp ${RED}[PROTOCOL_ATTACK]${NC} $ip_info:$port invalid format"
 
         elif echo "$line" | grep -q "Postponed"; then
             user=$(echo "$line" | sed -n 's/.*Postponed [^ ]* for \([^ ]*\) from.*/\1/p')
