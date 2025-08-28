@@ -71,3 +71,16 @@ wget -O ./white_list_ip.conf https://raw.githubusercontent.com/teplostanski/serv
   current  - только активные соединения
   realtime - мониторинг в реальном времени
 ```
+
+## f2b-status.sh
+
+Читабельная статистика `fail2ban`
+
+1. Скачать
+```bash
+wget -O ./f2b-status.sh https://raw.githubusercontent.com/teplostanski/servercare/main/f2b-status.sh && chmod +x ./f2b-status.sh
+```
+2. Запустить
+```bash
+./f2b-status.sh
+```
