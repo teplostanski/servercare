@@ -84,3 +84,9 @@ wget -O ./f2b-status.sh https://raw.githubusercontent.com/teplostanski/servercar
 ```bash
 ./f2b-status.sh
 ```
+
+# add-new-user.sh
+
+```bash
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/teplostanski/servercare/master/add-new-user.sh)"
+```
